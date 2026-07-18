@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patient-app-config
+  namespace: patient-app
+data:
+  APP_ENV: {{ .Values.config.appEnv | quote }}
+  AWS_REGION: {{ .Values.config.awsRegion | quote }}
+  S3_BUCKET: {{ .Values.config.s3Bucket | quote }}

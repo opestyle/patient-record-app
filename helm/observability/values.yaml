@@ -1,0 +1,28 @@
+namespace: monitoring
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80,"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_ME_CERT_ARN"
+  grafanaHost: grafana.example.com
+  prometheusHost: prometheus.example.com
+
+prometheus:
+  image: prom/prometheus:v2.54.1
+  servicePort: 9090
+
+loki:
+  image: grafana/loki:2.9.2
+  servicePort: 3100
+
+grafana:
+  image: grafana/grafana:11.1.0
+  servicePort: 3000
+  # The admin password is generated at install time into the "grafana-admin"
+  # Secret (see templates/grafana-secret.yaml) — retrieve it with:
+  #   kubectl get secret grafana-admin -n monitoring -o jsonpath='{.data.admin-password}' | base64 -d

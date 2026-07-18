@@ -1,0 +1,54 @@
+replicaCount: 2
+
+backend:
+  image:
+    repository: "REPLACE_ME_BACKEND_ECR_REPOSITORY"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8000
+
+frontend:
+  image:
+    repository: "REPLACE_ME_FRONTEND_ECR_REPOSITORY"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+
+serviceAccount:
+  create: true
+  name: patient-app-sa
+  annotations:
+    eks.amazonaws.com/role-arn: "REPLACE_ME_IRSA_ROLE_ARN"
+
+config:
+  appEnv: prod
+  awsRegion: us-east-1
+  s3Bucket: "REPLACE_ME_S3_BUCKET"
+
+secretStore:
+  enabled: true
+  name: aws-secrets-manager
+  region: us-east-1
+  roleArn: "REPLACE_ME_EXTERNAL_SECRETS_ROLE_ARN"
+
+externalSecret:
+  enabled: true
+  name: patient-app-secret
+  secretStoreName: aws-secrets-manager
+  secretName: patient-app-secrets
+  remoteSecretName: "REPLACE_ME_SECRET_NAME"
+  refreshInterval: 1m
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80,"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_ME_CERT_ARN"
+  host: patient.example.com

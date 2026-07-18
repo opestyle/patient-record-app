@@ -1,0 +1,126 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy_to_aws:
+        description: 'Deploy to AWS resources such as EKS, ECR, RDS, and S3'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  id-token: write
+  contents: write
+
+env:
+  AWS_REGION: us-east-1
+  IMAGE_TAG: ${{ github.sha }}
+  EXTERNAL_SECRETS_VERSION: v2.8.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r app/backend/requirements.txt
+
+      - name: Run backend tests
+        run: pytest
+        working-directory: app/backend
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: app/frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: app/frontend
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t "$ECR_REGISTRY/${{ secrets.ECR_BACKEND_REPOSITORY }}:${IMAGE_TAG}" -f app/backend/Dockerfile app/backend
+          docker push "$ECR_REGISTRY/${{ secrets.ECR_BACKEND_REPOSITORY }}:${IMAGE_TAG}"
+
+      - name: Build and push frontend image
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t "$ECR_REGISTRY/${{ secrets.ECR_FRONTEND_REPOSITORY }}:${IMAGE_TAG}" -f app/frontend/Dockerfile app/frontend
+          docker push "$ECR_REGISTRY/${{ secrets.ECR_FRONTEND_REPOSITORY }}:${IMAGE_TAG}"
+
+      - name: Update Helm values with image tag
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          path = Path('helm/patient-app/values.yaml')
+          text = path.read_text()
+          backend_repo = f"${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_BACKEND_REPOSITORY }}"
+          frontend_repo = f"${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_FRONTEND_REPOSITORY }}"
+          text = text.replace('repository: "REPLACE_ME_BACKEND_ECR_REPOSITORY"', f'repository: "{backend_repo}"')
+          text = text.replace('repository: "REPLACE_ME_FRONTEND_ECR_REPOSITORY"', f'repository: "{frontend_repo}"')
+          text = text.replace('tag: "latest"', f'tag: "{os.environ["IMAGE_TAG"]}"')
+          path.write_text(text)
+          PY
+
+      - name: Set up kubectl and Helm
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        run: |
+          aws eks update-kubeconfig --name "${{ secrets.EKS_CLUSTER_NAME }}" --region "${AWS_REGION}"
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Install external-secrets CRDs
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        run: |
+          kubectl apply -f "https://raw.githubusercontent.com/external-secrets/external-secrets/${EXTERNAL_SECRETS_VERSION}/deploy/crds/bundle.yaml"
+
+      - name: Deploy with Helm
+        if: ${{ inputs.deploy_to_aws == 'true' }}
+        run: |
+          helm upgrade --install patient-app ./helm/patient-app -n patient-app --create-namespace -f ./helm/patient-app/values.yaml
