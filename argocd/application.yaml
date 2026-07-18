@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/REPLACE_ME_OWNER/patient-record-app.git
+    repoURL: https://github.com/opestyle/patient-record-app.git
     targetRevision: HEAD
     path: helm/patient-app
     helm:
