@@ -110,3 +110,15 @@ variable "eks_public_access_cidrs" {
   type        = list(string)
   default     = ["203.0.113.0/32"]
 }
+
+variable "deploy_ci_prereqs" {
+  description = "Set to true to provision only the low-cost CI prerequisites (ECR repositories + a GitHub Actions OIDC IAM role) without the full VPC/EKS/RDS stack. Implied by deploy_aws_infra."
+  type        = bool
+  default     = false
+}
+
+variable "github_repo" {
+  description = "GitHub \"owner/repo\" allowed to assume the CI IAM role via OIDC"
+  type        = string
+  default     = "opestyle/patient-record-app"
+}

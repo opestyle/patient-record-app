@@ -54,11 +54,22 @@ module "eks" {
 }
 
 module "ecr" {
-  count  = var.deploy_aws_infra ? 1 : 0
+  count  = var.deploy_aws_infra || var.deploy_ci_prereqs ? 1 : 0
   source = "./modules/ecr"
 
   env  = var.env
   tags = local.tags
+}
+
+module "github_oidc" {
+  count  = var.deploy_aws_infra || var.deploy_ci_prereqs ? 1 : 0
+  source = "./modules/github_oidc"
+
+  env                   = var.env
+  github_repo           = var.github_repo
+  ecr_backend_repo_arn  = try(module.ecr[0].backend_repo_arn, "")
+  ecr_frontend_repo_arn = try(module.ecr[0].frontend_repo_arn, "")
+  tags                  = local.tags
 }
 
 module "s3" {
